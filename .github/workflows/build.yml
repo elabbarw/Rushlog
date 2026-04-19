@@ -1,0 +1,165 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+            label: macOS-arm64
+          - platform: macos-13
+            target: x86_64-apple-darwin
+            label: macOS-x64
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+            label: Windows-x64
+
+    runs-on: ${{ matrix.platform }}
+    name: Build (${{ matrix.label }})
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      # ── Download FFmpeg for bundling ──
+      # Uses the maintained setup-ffmpeg action which handles checksums internally
+      - name: Install FFmpeg
+        uses: federicocarboni/setup-ffmpeg@v3
+        id: setup-ffmpeg
+        with:
+          ffmpeg-version: release
+          architecture: ''
+          linking-type: static
+          github-token: ${{ github.token }}
+
+      - name: Bundle FFmpeg binaries (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p src-tauri/binaries
+          FFMPEG_PATH=$(which ffmpeg)
+          FFPROBE_PATH=$(which ffprobe)
+          cp "$FFMPEG_PATH" "src-tauri/binaries/ffmpeg-${{ matrix.target }}"
+          cp "$FFPROBE_PATH" "src-tauri/binaries/ffprobe-${{ matrix.target }}"
+          chmod +x src-tauri/binaries/ffmpeg-* src-tauri/binaries/ffprobe-*
+          # Verify binaries are functional
+          src-tauri/binaries/ffmpeg-${{ matrix.target }} -version | head -1
+          src-tauri/binaries/ffprobe-${{ matrix.target }} -version | head -1
+
+      - name: Bundle FFmpeg binaries (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path src-tauri/binaries
+          $ffmpegPath = (Get-Command ffmpeg).Source
+          $ffprobePath = (Get-Command ffprobe).Source
+          Copy-Item $ffmpegPath "src-tauri/binaries/ffmpeg-${{ matrix.target }}.exe"
+          Copy-Item $ffprobePath "src-tauri/binaries/ffprobe-${{ matrix.target }}.exe"
+          # Verify
+          & "src-tauri/binaries/ffmpeg-${{ matrix.target }}.exe" -version | Select-Object -First 1
+          & "src-tauri/binaries/ffprobe-${{ matrix.target }}.exe" -version | Select-Object -First 1
+
+      - name: Verify bundled binaries
+        shell: bash
+        run: |
+          echo "Bundled binaries:"
+          ls -lh src-tauri/binaries/
+          # Verify checksums of what we're bundling
+          shasum -a 256 src-tauri/binaries/* || sha256sum src-tauri/binaries/* || true
+
+      # ── Build ──
+      - name: Build Tauri app
+        run: npx tauri build --target ${{ matrix.target }}
+
+      - name: Upload macOS DMG
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: rushlog-${{ matrix.label }}
+          path: src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+
+      - name: Upload Windows MSI
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: rushlog-${{ matrix.label }}
+          path: src-tauri/target/${{ matrix.target }}/release/bundle/msi/*.msi
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: List artifacts
+        run: find artifacts -type f | head -20
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Rushlog ${{ github.ref_name }}
+          draft: false
+          files: artifacts/**/*
+          body: |
+            ## Rushlog ${{ github.ref_name }}
+
+            FFmpeg is bundled — no external dependencies needed.
+
+            ### Downloads
+
+            | Platform | File |
+            |----------|------|
+            | macOS (Apple Silicon) | `Rushlog_*_aarch64.dmg` |
+            | macOS (Intel) | `Rushlog_*_x64.dmg` |
+            | Windows | `Rushlog_*_x64-setup.msi` |
+
+            ### macOS — unsigned app
+
+            After installing, run:
+            ```
+            xattr -cr "/Applications/Rushlog.app"
+            ```
+
+            ### Windows
+
+            Download and run the `.msi` installer.
+
+            ### Requirements
+
+            - [Gemini API key](https://aistudio.google.com/apikey) (free tier works)
