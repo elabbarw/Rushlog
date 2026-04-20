@@ -10,7 +10,7 @@ Rushlog is a cross-platform desktop tool that batch-describes video rushes into 
 - Markdown sidecars with YAML frontmatter next to each video file
 - `INDEX.md` with tag index and duration summary for the whole folder
 - Optional verbatim transcript extraction via Gemini
-- Large file splitting (FFmpeg stream-copy, no re-encode) for videos over 2 GB
+- Large file splitting with re-encode to 480p for videos over 2 GB
 - Configurable model, resolution, concurrency, and custom prompts
 - Light/dark mode following system appearance
 
