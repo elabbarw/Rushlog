@@ -21,6 +21,11 @@ struct AppState {
 // ── Tauri Commands ──
 
 #[tauri::command]
+fn check_ffmpeg() -> Result<String, String> {
+    ffmpeg::check_available()
+}
+
+#[tauri::command]
 fn get_settings() -> SettingsView {
     let s = settings::load();
     SettingsView {
@@ -295,6 +300,7 @@ pub fn run() {
             cancel_token: std::sync::Mutex::new(CancellationToken::new()),
         })
         .invoke_handler(tauri::generate_handler![
+            check_ffmpeg,
             get_settings,
             save_settings,
             scan_folder,

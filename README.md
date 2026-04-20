@@ -16,9 +16,10 @@ Rushlog is a cross-platform desktop tool that batch-describes video rushes into 
 
 ## Requirements
 
+- **FFmpeg** installed on your system (the app will detect if it's missing and guide you through installation)
+  - **macOS:** `brew install ffmpeg`
+  - **Windows:** `winget install Gyan.FFmpeg` or download from [ffmpeg.org](https://ffmpeg.org/download.html)
 - **Gemini API key** from [Google AI Studio](https://aistudio.google.com/apikey) (free tier, no credit card)
-
-FFmpeg is bundled with the app — no separate install needed.
 
 ## Install
 
@@ -37,11 +38,10 @@ Then open normally. Alternatively, right-click the app and choose **Open** — m
 ## Build from source
 
 ```bash
-# Prerequisites: Rust, Node.js
+# Prerequisites: Rust, Node.js, FFmpeg
 git clone https://github.com/user/rushlog.git
 cd rushlog
 npm install
-npm run download-ffmpeg   # downloads FFmpeg for your platform
 npm run tauri build
 ```
 

@@ -50,52 +50,6 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      # ── Download FFmpeg for bundling ──
-      # Uses the maintained setup-ffmpeg action which handles checksums internally
-      - name: Install FFmpeg
-        uses: federicocarboni/setup-ffmpeg@v3
-        id: setup-ffmpeg
-        with:
-          ffmpeg-version: release
-          architecture: ''
-          linking-type: static
-          github-token: ${{ github.token }}
-
-      - name: Bundle FFmpeg binaries (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          mkdir -p src-tauri/binaries
-          FFMPEG_PATH=$(which ffmpeg)
-          FFPROBE_PATH=$(which ffprobe)
-          cp "$FFMPEG_PATH" "src-tauri/binaries/ffmpeg-${{ matrix.target }}"
-          cp "$FFPROBE_PATH" "src-tauri/binaries/ffprobe-${{ matrix.target }}"
-          chmod +x src-tauri/binaries/ffmpeg-* src-tauri/binaries/ffprobe-*
-          # Verify binaries are functional
-          src-tauri/binaries/ffmpeg-${{ matrix.target }} -version | head -1
-          src-tauri/binaries/ffprobe-${{ matrix.target }} -version | head -1
-
-      - name: Bundle FFmpeg binaries (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path src-tauri/binaries
-          $ffmpegPath = (Get-Command ffmpeg).Source
-          $ffprobePath = (Get-Command ffprobe).Source
-          Copy-Item $ffmpegPath "src-tauri/binaries/ffmpeg-${{ matrix.target }}.exe"
-          Copy-Item $ffprobePath "src-tauri/binaries/ffprobe-${{ matrix.target }}.exe"
-          # Verify
-          & "src-tauri/binaries/ffmpeg-${{ matrix.target }}.exe" -version | Select-Object -First 1
-          & "src-tauri/binaries/ffprobe-${{ matrix.target }}.exe" -version | Select-Object -First 1
-
-      - name: Verify bundled binaries
-        shell: bash
-        run: |
-          echo "Bundled binaries:"
-          ls -lh src-tauri/binaries/
-          # Verify checksums of what we're bundling
-          shasum -a 256 src-tauri/binaries/* || sha256sum src-tauri/binaries/* || true
-
-      # ── Build ──
       - name: Build Tauri app
         run: npx tauri build --target ${{ matrix.target }}
 
@@ -139,8 +93,6 @@ jobs:
           body: |
             ## Rushlog ${{ github.ref_name }}
 
-            FFmpeg is bundled — no external dependencies needed.
-
             ### Downloads
 
             | Platform | File |
@@ -148,6 +100,13 @@ jobs:
             | macOS (Apple Silicon) | `Rushlog_*_aarch64.dmg` |
             | macOS (Intel) | `Rushlog_*_x64.dmg` |
             | Windows | `Rushlog_*_x64-setup.msi` |
+
+            ### Requirements
+
+            - **FFmpeg** must be installed on your system. The app will guide you through installation on first launch.
+              - **macOS:** `brew install ffmpeg`
+              - **Windows:** Download from [ffmpeg.org](https://ffmpeg.org/download.html) and add to PATH
+            - [Gemini API key](https://aistudio.google.com/apikey) (free tier works)
 
             ### macOS — unsigned app
 
@@ -159,7 +118,3 @@ jobs:
             ### Windows
 
             Download and run the `.msi` installer.
-
-            ### Requirements
-
-            - [Gemini API key](https://aistudio.google.com/apikey) (free tier works)

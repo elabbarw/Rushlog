@@ -57,6 +57,7 @@ export interface ProgressEvent {
 }
 
 export const ipc = {
+  checkFfmpeg: () => invoke<string>("check_ffmpeg"),
   getSettings: () => invoke<SettingsView>("get_settings"),
   saveSettings: (s: Settings) => invoke<void>("save_settings", { newSettings: s }),
   scanFolder: (folderPath: string) => invoke<ScanResult>("scan_folder", { folderPath }),

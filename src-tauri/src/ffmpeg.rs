@@ -1,23 +1,8 @@
 use std::path::Path;
 use std::process::Command;
 
-/// Resolve a binary name — check bundled sidecar first, then system PATH, then common locations.
-/// Tauri bundles sidecars next to the executable in the app bundle.
+/// Resolve a binary name by checking system PATH and common install locations.
 fn resolve_bin(name: &str) -> String {
-    // 1. Check for bundled sidecar next to our executable
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            let sidecar = dir.join(name);
-            if sidecar.exists() {
-                return sidecar.to_string_lossy().to_string();
-            }
-            // macOS .app: also check ../Resources/ (Tauri puts sidecars in MacOS/)
-            // The exe is at Rushlog.app/Contents/MacOS/rushlog
-            // Sidecars are at Rushlog.app/Contents/MacOS/ffmpeg
-        }
-    }
-
-    // 2. Try system PATH and common locations
     let candidates: &[&str] = match name {
         "ffprobe" => &["ffprobe", "/opt/homebrew/bin/ffprobe", "/usr/local/bin/ffprobe", "/usr/bin/ffprobe"],
         "ffmpeg" => &["ffmpeg", "/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg", "/usr/bin/ffmpeg"],
@@ -36,8 +21,39 @@ fn resolve_bin(name: &str) -> String {
         }
     }
 
-    // 3. Fall back to bare name (will fail with a clear error if not found)
+    // Fall back to bare name (will fail with a clear error if not found)
     name.to_string()
+}
+
+/// Check whether ffmpeg and ffprobe are available on the system.
+/// Returns Ok(version_string) or Err(explanation).
+pub fn check_available() -> Result<String, String> {
+    let ffmpeg = resolve_bin("ffmpeg");
+    let output = Command::new(&ffmpeg)
+        .arg("-version")
+        .output()
+        .map_err(|_| "FFmpeg is not installed or not found in PATH.".to_string())?;
+
+    if !output.status.success() {
+        return Err("FFmpeg was found but returned an error.".to_string());
+    }
+
+    let version_line = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .next()
+        .unwrap_or("ffmpeg (unknown version)")
+        .to_string();
+
+    // Also verify ffprobe
+    let ffprobe = resolve_bin("ffprobe");
+    Command::new(&ffprobe)
+        .arg("-version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map_err(|_| "ffprobe is not installed or not found in PATH.".to_string())?;
+
+    Ok(version_line)
 }
 
 fn ffprobe_bin() -> String {
